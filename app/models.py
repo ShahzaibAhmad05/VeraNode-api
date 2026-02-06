@@ -45,16 +45,18 @@ class Admin(db.Model):
 
 
 class User(db.Model):
-    """User account model - stores only registration record and key generation"""
+    """User account model - stores email and password for account creation"""
     __tablename__ = 'users'
     
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    secret_key = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    email = db.Column(db.String(255), nullable=False, unique=True, index=True)
+    password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     
     def to_dict(self):
         return {
             'id': self.id,
+            'email': self.email,
             'createdAt': self.created_at.isoformat()
         }
     

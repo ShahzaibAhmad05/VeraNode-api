@@ -2,8 +2,8 @@ from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from app import db
 from app.models import User, SecretKeyProfile, AreaEnum
-from app.utils.validators import validate_area
-from app.utils.helpers import generate_secret_key
+from app.utils.validators import validate_area, validate_edu_email, validate_password
+from app.utils.helpers import generate_secret_key, hash_password, verify_password
 from app.utils.error_handlers import APIError
 from app.config import Config
 
@@ -12,35 +12,61 @@ auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
-    """Register a new user - returns secret key ONCE (cannot be regenerated)"""
+    """Register a new user account with email and password, and generate a separate secret key"""
     data = request.get_json()
     
     if not data:
         raise APIError("Request body is required", "INVALID_REQUEST", 400)
     
-    area = data.get('area', '')
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+    department = data.get('department', '')
     
-    # Validate area
-    valid, error = validate_area(area)
+    # Validate email
+    valid, error = validate_edu_email(email)
     if not valid:
-        raise APIError(error, "INVALID_AREA", 400)
+        raise APIError(error, "INVALID_EMAIL", 400)
     
-    # Generate secret key (unique identifier for the user)
-    secret_key = generate_secret_key()
+    # Validate password
+    valid, error = validate_password(password)
+    if not valid:
+        raise APIError(error, "INVALID_PASSWORD", 400)
     
-    # Ensure uniqueness (extremely rare collision)
-    while User.query.filter_by(secret_key=secret_key).first() is not None:
-        secret_key = generate_secret_key()
+    # Validate department (area) - General is not allowed as a department choice
+    valid, error = validate_area(department)
+    if not valid:
+        raise APIError(error, "INVALID_DEPARTMENT", 400)
     
-    # Create user account (registration record only)
+    if department == "General":
+        raise APIError(
+            "General is not a valid department. Please select your specific department.",
+            "INVALID_DEPARTMENT",
+            400
+        )
+    
+    # Check if email already exists
+    existing_user = User.query.filter_by(email=email).first()
+    if existing_user:
+        raise APIError("Email already registered", "EMAIL_EXISTS", 409)
+    
+    # Create user account with email and password
+    password_hashed = hash_password(password)
     user = User(
-        secret_key=secret_key
+        email=email,
+        password_hash=password_hashed
     )
     
-    # Create profile (data stored against secret key)
+    # Generate secret key (completely independent of user account)
+    secret_key = generate_secret_key()
+    
+    # Ensure secret key uniqueness (extremely rare collision)
+    while SecretKeyProfile.query.filter_by(secret_key=secret_key).first() is not None:
+        secret_key = generate_secret_key()
+    
+    # Create secret key profile (NOT linked to user account - zero-knowledge design)
     profile = SecretKeyProfile(
         secret_key=secret_key,
-        area=AreaEnum(area),
+        area=AreaEnum(department),
         points=Config.INITIAL_USER_POINTS
     )
     

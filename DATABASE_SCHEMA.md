@@ -14,16 +14,17 @@ CREATE INDEX idx_admins_admin_key ON admins(admin_key);
 ```
 **Note:** Admin key is generated once during initialization. Used to access admin dashboard.
 
-### 2. **users** (Registration Record Only)
+### 2. **users** (User Account Registration)
 ```sql
 CREATE TABLE users (
     id VARCHAR(36) PRIMARY KEY,
-    secret_key VARCHAR(64) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_users_secret_key ON users(secret_key);
+CREATE INDEX idx_users_email ON users(email);
 ```
-**Note:** User's key is their only identifier. No password recovery - if lost, the key cannot be regenerated.
+**Note:** User accounts store email (.edu.pk validated) and password hash. This table represents the user's account creation. The secret key is generated separately and is NOT linked to this account in any way for privacy.
 
 ### 3. **secret_key_profiles** (User Data - Zero-Knowledge)
 ```sql
@@ -108,14 +109,24 @@ VoteTypeEnum = ["FACT", "LIE"]
 DecisionEnum = ["FACT", "LIE"]
 ```
 
+**Note on Areas:**
+- **For User Registration (department):** Users must select one of: SEECS, NBS, ASAB, SINES, SCME, or S3H. "General" is NOT allowed as a department choice.
+- **For Rumor Area of Vote:** All areas including "General" are valid. When a rumor has "General" as its area, all votes have equal weightage regardless of the voter's department.
+
 ---
 
 ## Key Relationships
 
 ```
-users (1) ←→ (1) secret_key_profiles  [via secret_key - NOT FK, just matching value]
+users (separate table - NO relationship to secret_key_profiles)
     ↑
-    └── NO FOREIGN KEY - Zero-Knowledge Design
+    └── Stores account credentials (email + password)
+    └── COMPLETELY SEPARATE from secret key system
+
+secret_key_profiles (independent table)
+    ↑
+    └── Secret keys are generated randomly
+    └── NO connection to user accounts - Zero-Knowledge Design
     
 secret_key_profiles (1) → (many) rumors
 secret_key_profiles (1) → (many) votes
@@ -128,13 +139,15 @@ rumors (1) ← (1) blockchain_ledger [when finalized]
 
 ## Privacy Architecture
 
-- **users** table: Only stores registration record (secret_key is the user's identifier)
-- **secret_key_profiles** table: All user data (area, points, blocking status) stored against secret_key
-- **NO direct FK** between `users` and `secret_key_profiles`
-- Profile data cannot be traced back to any personal information
+- **users** table: Stores account credentials (email ending in .edu.pk and password hash) for account creation
+- **secret_key_profiles** table: All user data (area/department, points, blocking status) stored against secret_key
+- **COMPLETE SEPARATION**: Secret keys are generated randomly and have NO connection whatsoever to user accounts
+- **Zero-Knowledge Design**: Secret keys cannot be traced back to email addresses or user accounts in any way
+- **Registration Flow**: User provides email + password + department → Account created in `users` table AND a separate random secret_key is generated for `secret_key_profiles` table → These are NOT linked
+- Profile data cannot be traced back to any personal information or email
 - Nullifiers ensure anonymous voting while preventing double-votes
-- **Key Loss**: System assumes users will never lose their key - no recovery mechanism exists
-- **Admin View**: Admins can ONLY see blocked users' full secret keys (for unblocking), NO area or points visible
+- **Key Loss**: If secret key is lost, it cannot be recovered or regenerated (no connection to account)
+- **Admin View**: Admins can ONLY see blocked users' full secret keys (for unblocking), NO area, points, or account info visible
 - **Vote Privacy**: Votes are DELETED after rumor finalization - cannot trace voting history
 - **Blockchain**: Only aggregate statistics stored permanently, individual votes are erased
 

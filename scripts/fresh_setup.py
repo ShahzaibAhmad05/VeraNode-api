@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app import create_app, db
 from app.models import User, SecretKeyProfile, Admin, AreaEnum
-from app.utils.helpers import generate_secret_key
+from app.utils.helpers import generate_secret_key, hash_password
 from app.config import Config
 
 def fresh_setup():
@@ -35,23 +35,34 @@ def fresh_setup():
         print("📦 Creating new tables...")
         db.create_all()
         
-        # Create sample profiles
-        print("👥 Creating sample profiles...")
-        sample_areas = [AreaEnum.SEECS, AreaEnum.NBS, AreaEnum.ASAB]
-        user_keys = []
+        # Create sample user accounts and profiles
+        print("👥 Creating sample user accounts and profiles...")
+        sample_data = [
+            (AreaEnum.SEECS, "seecs.user@nust.edu.pk"),
+            (AreaEnum.NBS, "nbs.user@nust.edu.pk"),
+            (AreaEnum.ASAB, "asab.user@nust.edu.pk")
+        ]
+        user_info = []
         
-        for area in sample_areas:
+        for area, email in sample_data:
+            # Create user account (email + password)
+            user = User(
+                email=email,
+                password_hash=hash_password("password123")
+            )
+            
+            # Generate separate secret key (NOT linked to account)
             secret_key = generate_secret_key()
-            user = User(secret_key=secret_key)
             profile = SecretKeyProfile(
                 secret_key=secret_key,
                 area=area,
                 points=Config.INITIAL_USER_POINTS
             )
+            
             db.session.add(user)
             db.session.add(profile)
-            user_keys.append((area.value, secret_key))
-            print(f"   ✓ Created {area.value} profile")
+            user_info.append((area.value, email, secret_key))
+            print(f"   ✓ Created {area.value} account and profile")
         
         # Create admin (ONLY ONE)
         print("\n👮 Creating admin account...")
@@ -67,9 +78,11 @@ def fresh_setup():
         print("✅ SETUP COMPLETE!")
         print("="*70)
         
-        print("\n📝 SAMPLE USER KEYS:")
-        for area, key in user_keys:
-            print(f"   {area}: {key}")
+        print("\n📝 SAMPLE USERS (password: password123):")
+        for area, email, secret_key in user_info:
+            print(f"\n   {area}:")
+            print(f"      Email: {email}")
+            print(f"      Secret Key: {secret_key}")
         
         print("\n" + "="*70)
         print("🔑 ADMIN KEY (SAVE THIS!):")

@@ -2,6 +2,29 @@ import re
 from app.models import AreaEnum
 
 
+def validate_edu_email(email: str) -> tuple[bool, str]:
+    """Validate .edu.pk email format"""
+    if not email:
+        return False, "Email is required"
+    
+    email = email.strip().lower()
+    
+    # Check basic email format (contains @ and at least one dot)
+    if '@' not in email or '.' not in email:
+        return False, "Invalid email format"
+    
+    # Check if email ends with .edu.pk
+    if not email.endswith('.edu.pk'):
+        return False, "Email must end with .edu.pk"
+    
+    # Basic email pattern validation
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.edu\.pk$'
+    if not re.match(pattern, email):
+        return False, "Invalid email format"
+    
+    return True, ""
+
+
 def validate_university_id(university_id: str) -> tuple[bool, str]:
     """Validate university ID format (e.g., 21i-1234)"""
     if not university_id:
