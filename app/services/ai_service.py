@@ -23,13 +23,14 @@ class AIService:
             self.client = None
             self.model = None
     
-    def validate_rumor(self, content: str, voting_ends_at: str = None) -> Dict[str, Any]:
+    def validate_rumor(self, content: str, voting_ends_at: str = None, area_of_vote: str = None) -> Dict[str, Any]:
         """
         Validate if content is a rumor worthy of voting
         
         Args:
             content: The rumor text to validate
             voting_ends_at: ISO format datetime string when voting ends (optional)
+            area_of_vote: The area where voting will take place (optional)
         
         Returns:
             {
@@ -41,15 +42,15 @@ class AIService:
         """
         if not self.client:
             # Fallback validation when AI is not configured
-            return self._fallback_validation(content)
+            return self._fallback_validation(content, area_of_vote)
         
         try:
-            return self._validate_with_azure_openai(content, voting_ends_at)
+            return self._validate_with_azure_openai(content, voting_ends_at, area_of_vote)
         except Exception as e:
             print(f"AI validation error: {str(e)}")
-            return self._fallback_validation(content)
+            return self._fallback_validation(content, area_of_vote)
     
-    def _validate_with_azure_openai(self, content: str, voting_ends_at: str = None) -> Dict[str, Any]:
+    def _validate_with_azure_openai(self, content: str, voting_ends_at: str = None, area_of_vote: str = None) -> Dict[str, Any]:
         """Validate using Azure OpenAI"""
         system_prompt = """You are a rumor validator for a university community platform. 
 Analyze if the given text is:
@@ -57,20 +58,28 @@ Analyze if the given text is:
 2. A known fact that can be easily verified - REJECT
 3. Nonsense/spam/inappropriate content - REJECT
 
-Also suggest which area this rumor belongs to from: SEECS, NBS, ASAB, SINES, SCME, S3H, General
+Valid areas: SEECS, NBS, ASAB, SINES, SCME, S3H, General
+
+Validate that:
+- The content is a genuine rumor
+- The voting timeframe is reasonable (should be between 1 hour and 7 days from now)
+- The selected area matches the rumor context (e.g., SEECS rumor should be in SEECS area)
 
 Return a JSON object with:
-- isValid (boolean): whether this should be accepted
+- isValid (boolean): whether this should be accepted (content, timing, and area are appropriate)
 - isRumor (boolean): whether this is actually a rumor
 - reason (string): explanation of the decision
-- suggestedArea (string): one of the valid areas
+- suggestedArea (string): one of the valid areas if different from selected
 
-Be strict: only accept genuine rumors that need community verification."""
+Be strict: only accept genuine rumors with appropriate timing and area selection."""
         
         user_message = f"Analyze this text:\n\n{content}"
         
         if voting_ends_at:
             user_message += f"\n\nVoting will end at: {voting_ends_at}"
+        
+        if area_of_vote:
+            user_message += f"\n\nSelected area: {area_of_vote}"
         
         response = self.client.chat.completions.create(
             model=self.model,
@@ -84,10 +93,22 @@ Be strict: only accept genuine rumors that need community verification."""
         result = json.loads(response.choices[0].message.content)
         return self._normalize_response(result)
     
-    def _fallback_validation(self, content: str) -> Dict[str, Any]:
+    def _fallback_validation(self, content: str, area_of_vote: str = None) -> Dict[str, Any]:
         """Fallback validation when AI is not available"""
         # Basic validation rules
         content = content.strip()
+        
+        # Validate area if provided
+        suggested_area = area_of_vote if area_of_vote else 'General'
+        if area_of_vote:
+            valid_areas = [e.value for e in AreaEnum]
+            if area_of_vote not in valid_areas:
+                return {
+                    'isValid': False,
+                    'isRumor': False,
+                    'reason': f'Invalid area. Must be one of: {", ".join(valid_areas)}',
+                    'suggestedArea': 'General'
+                }
         
         # Reject very short content
         if len(content) < 20:
@@ -95,7 +116,7 @@ Be strict: only accept genuine rumors that need community verification."""
                 'isValid': False,
                 'isRumor': False,
                 'reason': 'Content too short to be a meaningful rumor',
-                'suggestedArea': 'General'
+                'suggestedArea': suggested_area
             }
         
         # Check for spam patterns
@@ -105,7 +126,7 @@ Be strict: only accept genuine rumors that need community verification."""
                 'isValid': False,
                 'isRumor': False,
                 'reason': 'Content appears to be spam',
-                'suggestedArea': 'General'
+                'suggestedArea': suggested_area
             }
         
         # Accept by default in fallback mode
@@ -113,7 +134,7 @@ Be strict: only accept genuine rumors that need community verification."""
             'isValid': True,
             'isRumor': True,
             'reason': 'Content appears to be a rumor (AI validation disabled)',
-            'suggestedArea': 'General'
+            'suggestedArea': suggested_area
         }
     
     def _normalize_response(self, result: Dict[str, Any]) -> Dict[str, Any]:

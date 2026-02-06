@@ -14,29 +14,6 @@ from app.middleware.nullifier import nullifier_required
 rumors_bp = Blueprint('rumors', __name__)
 
 
-@rumors_bp.route('/validate', methods=['POST'])
-@jwt_required()
-def validate_rumor():
-    """Validate rumor content with AI before posting"""
-    data = request.get_json()
-    
-    if not data:
-        raise APIError("Request body is required", "INVALID_REQUEST", 400)
-    
-    content = data.get('content', '').strip()
-    voting_ends_at = data.get('votingEndsAt', '')  # ISO string from frontend
-    
-    # Basic validation
-    valid, error = validate_rumor_content(content)
-    if not valid:
-        raise APIError(error, "INVALID_CONTENT", 400)
-    
-    # AI validation with voting time
-    validation = ai_service.validate_rumor(content, voting_ends_at)
-    
-    return jsonify(validation), 200
-
-
 @rumors_bp.route('', methods=['POST'])
 @nullifier_required
 def create_rumor():
@@ -89,7 +66,7 @@ def create_rumor():
         )
     
     # AI validation with voting time
-    validation = ai_service.validate_rumor(content, voting_ends_at_str)
+    validation = ai_service.validate_rumor(content, voting_ends_at_str, area_of_vote)
     
     if not validation['isValid']:
         raise APIError(
