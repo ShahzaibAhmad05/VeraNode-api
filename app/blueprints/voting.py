@@ -97,7 +97,7 @@ def vote_on_rumor(rumor_id):
 @jwt_required()
 @nullifier_required
 def get_vote_status(rumor_id):
-    """Check if user has voted on a rumor"""
+    """Check if user has voted on a rumor (doesn't reveal vote details)"""
     secret_key = g.secret_key
     
     # Get rumor
@@ -114,18 +114,11 @@ def get_vote_status(rumor_id):
         nullifier=nullifier
     ).first()
     
-    if vote:
-        return jsonify({
-            'hasVoted': True,
-            'voteType': vote.vote_type.value,
-            'weight': float(vote.weight),
-            'timestamp': vote.timestamp.isoformat()
-        }), 200
-    else:
-        return jsonify({
-            'hasVoted': False,
-            'voteType': None
-        }), 200
+    # Only return if user has voted, not what they voted for
+    # This prevents users from second-guessing or being influenced by their own past vote
+    return jsonify({
+        'hasVoted': vote is not None
+    }), 200
 
 
 @voting_bp.route('/votes/my-votes', methods=['GET'])

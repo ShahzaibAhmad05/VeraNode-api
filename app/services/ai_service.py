@@ -23,9 +23,13 @@ class AIService:
             self.client = None
             self.model = None
     
-    def validate_rumor(self, content: str) -> Dict[str, Any]:
+    def validate_rumor(self, content: str, voting_ends_at: str = None) -> Dict[str, Any]:
         """
         Validate if content is a rumor worthy of voting
+        
+        Args:
+            content: The rumor text to validate
+            voting_ends_at: ISO format datetime string when voting ends (optional)
         
         Returns:
             {
@@ -40,12 +44,12 @@ class AIService:
             return self._fallback_validation(content)
         
         try:
-            return self._validate_with_azure_openai(content)
+            return self._validate_with_azure_openai(content, voting_ends_at)
         except Exception as e:
             print(f"AI validation error: {str(e)}")
             return self._fallback_validation(content)
     
-    def _validate_with_azure_openai(self, content: str) -> Dict[str, Any]:
+    def _validate_with_azure_openai(self, content: str, voting_ends_at: str = None) -> Dict[str, Any]:
         """Validate using Azure OpenAI"""
         system_prompt = """You are a rumor validator for a university community platform. 
 Analyze if the given text is:
@@ -63,11 +67,16 @@ Return a JSON object with:
 
 Be strict: only accept genuine rumors that need community verification."""
         
+        user_message = f"Analyze this text:\n\n{content}"
+        
+        if voting_ends_at:
+            user_message += f"\n\nVoting will end at: {voting_ends_at}"
+        
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Analyze this text:\n\n{content}"}
+                {"role": "user", "content": user_message}
             ],
             response_format={"type": "json_object"}
         )

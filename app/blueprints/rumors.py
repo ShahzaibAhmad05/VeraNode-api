@@ -24,14 +24,15 @@ def validate_rumor():
         raise APIError("Request body is required", "INVALID_REQUEST", 400)
     
     content = data.get('content', '').strip()
+    voting_ends_at = data.get('votingEndsAt', '')  # ISO string from frontend
     
     # Basic validation
     valid, error = validate_rumor_content(content)
     if not valid:
         raise APIError(error, "INVALID_CONTENT", 400)
     
-    # AI validation
-    validation = ai_service.validate_rumor(content)
+    # AI validation with voting time
+    validation = ai_service.validate_rumor(content, voting_ends_at)
     
     return jsonify(validation), 200
 
@@ -50,6 +51,7 @@ def create_rumor():
     
     content = data.get('content', '').strip()
     area_of_vote = data.get('areaOfVote', '')
+    voting_ends_at_str = data.get('votingEndsAt', '')  # ISO string from frontend
     
     # Validate content
     valid, error = validate_rumor_content(content)
@@ -61,8 +63,33 @@ def create_rumor():
     if not valid:
         raise APIError(error, "INVALID_AREA", 400)
     
-    # AI validation
-    validation = ai_service.validate_rumor(content)
+    # Validate and parse voting end time
+    if not voting_ends_at_str:
+        raise APIError("votingEndsAt is required", "MISSING_FIELD", 400)
+    
+    try:
+        # Parse ISO string and make it timezone-naive UTC
+        voting_ends_at = datetime.fromisoformat(voting_ends_at_str.replace('Z', '+00:00'))
+        # Convert to naive UTC for comparison
+        if voting_ends_at.tzinfo is not None:
+            voting_ends_at = voting_ends_at.replace(tzinfo=None)
+    except (ValueError, AttributeError):
+        raise APIError(
+            "Invalid votingEndsAt format. Use ISO 8601 format (e.g., 2026-02-09T12:00:00Z)",
+            "INVALID_DATE_FORMAT",
+            400
+        )
+    
+    # Ensure voting end time is in the future
+    if voting_ends_at <= datetime.utcnow():
+        raise APIError(
+            "votingEndsAt must be in the future",
+            "INVALID_VOTING_TIME",
+            400
+        )
+    
+    # AI validation with voting time
+    validation = ai_service.validate_rumor(content, voting_ends_at_str)
     
     if not validation['isValid']:
         raise APIError(
@@ -96,7 +123,8 @@ def create_rumor():
         profile_id=profile.id,
         previous_hash=previous_hash,
         nullifier=nullifier,
-        current_hash=current_hash
+        current_hash=current_hash,
+        voting_ends_at=voting_ends_at  # Use frontend-provided time
     )
     
     db.session.add(rumor)
@@ -110,23 +138,20 @@ def create_rumor():
 
 @rumors_bp.route('', methods=['GET'])
 def get_rumors():
-    """Get list of rumors with optional filters"""
+    """
+    Get list of rumors with optional filters
+    
+    Note: Users can see ALL rumors regardless of area.
+    When voting, if rumor.area_of_vote matches user.area, it's "within area" (higher weight).
+    Otherwise, it's "not within area" (lower weight).
+    """
     # Query parameters
-    area = request.args.get('area')
     status = request.args.get('status')  # 'active', 'locked', 'final'
     
-    # Build query
+    # Build query - show ALL rumors to everyone
     query = Rumor.query
     
-    # Filter by area
-    if area:
-        try:
-            area_enum = AreaEnum(area)
-            query = query.filter_by(area_of_vote=area_enum)
-        except (KeyError, ValueError):
-            raise APIError(f"Invalid area: {area}", "INVALID_AREA", 400)
-    
-    # Filter by status
+    # Filter by status only
     if status == 'active':
         query = query.filter_by(is_locked=False, is_final=False)
     elif status == 'locked':
@@ -159,12 +184,26 @@ def get_rumor(rumor_id):
 
 @rumors_bp.route('/<rumor_id>/stats', methods=['GET'])
 def get_rumor_stats(rumor_id):
-    """Get detailed statistics for a rumor"""
+    """Get detailed statistics for a rumor (hidden until finalized)"""
     rumor = Rumor.query.get(rumor_id)
     
     if not rumor:
         raise APIError("Rumor not found", "RUMOR_NOT_FOUND", 404)
     
-    stats = rumor.get_stats()
+    # Only show stats when finalized to prevent psychological influence
+    if rumor.is_final:
+        stats = rumor.get_stats()
+    else:
+        stats = {
+            'totalVotes': 'hidden',
+            'factVotes': 'hidden',
+            'lieVotes': 'hidden',
+            'factWeight': 'hidden',
+            'lieWeight': 'hidden',
+            'underAreaVotes': 'hidden',
+            'notUnderAreaVotes': 'hidden',
+            'progress': 'hidden',
+            'message': 'Statistics are hidden until voting is finalized to prevent bias'
+        }
     
     return jsonify(stats), 200

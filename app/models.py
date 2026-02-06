@@ -134,9 +134,22 @@ class Rumor(db.Model):
             'previousHash': self.previous_hash
         }
         
-        if include_stats:
+        # Only show stats when rumor is finalized (prevent psychological influence during voting)
+        if include_stats and self.is_final:
             stats = self.get_stats()
             data['stats'] = stats
+        elif include_stats and not self.is_final:
+            # Return hidden stats during active/locked voting
+            data['stats'] = {
+                'totalVotes': 'hidden',
+                'factVotes': 'hidden',
+                'lieVotes': 'hidden',
+                'factWeight': 'hidden',
+                'lieWeight': 'hidden',
+                'underAreaVotes': 'hidden',
+                'notUnderAreaVotes': 'hidden',
+                'progress': 'hidden'
+            }
             
         return data
     
