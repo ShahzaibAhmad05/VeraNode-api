@@ -1,7 +1,8 @@
+from datetime import datetime
 from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from app import db
-from app.models import User, SecretKeyProfile, AreaEnum
+from app.models import User, SecretKeyProfile, Admin, AreaEnum
 from app.utils.validators import validate_area, validate_edu_email, validate_password
 from app.utils.helpers import generate_secret_key, hash_password, verify_password
 from app.utils.error_handlers import APIError
@@ -84,7 +85,7 @@ def register():
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
-    """Login with secret key"""
+    """Unified login - accepts both admin and student secret keys"""
     data = request.get_json()
     
     if not data:
@@ -95,7 +96,24 @@ def login():
     if not secret_key:
         raise APIError("Secret key is required", "INVALID_CREDENTIALS", 401)
     
-    # Find profile by secret key
+    # First, check if it's an admin key
+    admin = Admin.query.filter_by(admin_key=secret_key).first()
+    
+    if admin:
+        # Admin login
+        admin.last_login = datetime.utcnow()
+        db.session.commit()
+        
+        access_token = create_access_token(identity=secret_key)
+        
+        return jsonify({
+            'success': True,
+            'token': access_token,
+            'userType': 'admin',
+            'admin': admin.to_dict()
+        }), 200
+    
+    # If not admin, check if it's a student key
     profile = SecretKeyProfile.query.filter_by(secret_key=secret_key).first()
     
     if not profile:
@@ -108,12 +126,13 @@ def login():
             403
         )
     
-    # Generate JWT token using secret key as identity
+    # Student login
     access_token = create_access_token(identity=secret_key)
     
     return jsonify({
         'success': True,
         'token': access_token,
+        'userType': 'student',
         'profile': profile.to_dict()
     }), 200
 
