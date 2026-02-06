@@ -70,13 +70,16 @@ def admin_login():
 @admin_bp.route('/dashboard/blocked-users', methods=['GET'])
 @admin_required
 def get_blocked_users():
-    """Get all blocked user profiles"""
+    """Get all blocked user profiles (only full secret keys, no personal data)"""
     blocked_profiles = SecretKeyProfile.query.filter_by(is_blocked=True).all()
     
     profiles_data = []
     for profile in blocked_profiles:
-        profile_data = profile.to_dict()
-        profile_data['secretKeyPreview'] = profile.secret_key[:16] + '...'  # Show preview only
+        profile_data = {
+            'secretKey': profile.secret_key,  # Full secret key for unblocking
+            'isBlocked': profile.is_blocked,
+            'createdAt': profile.created_at.isoformat()
+        }
         profiles_data.append(profile_data)
     
     return jsonify({
@@ -116,9 +119,7 @@ def unblock_user():
         'success': True,
         'message': 'Profile unblocked successfully',
         'profile': {
-            'secretKeyPreview': profile.secret_key[:16] + '...',
-            'area': profile.area.value,
-            'points': profile.points,
+            'secretKey': profile.secret_key,
             'isBlocked': profile.is_blocked
         }
     }), 200

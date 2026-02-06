@@ -15,9 +15,9 @@ load_dotenv()
 sys.path.insert(0, os.path.dirname(__file__))
 
 from app import create_app, db
-from app.models import User, SecretKeyProfile, AreaEnum
-import bcrypt
+from app.models import User, SecretKeyProfile, Admin, AreaEnum
 from app.utils.helpers import generate_secret_key
+from app.config import Config
 
 
 def setup_database():
@@ -39,6 +39,9 @@ def setup_database():
         print("\n✓ Creating sample users and profiles...")
         create_sample_users()
         
+        print("\n✓ Creating admin account...")
+        create_admin()
+        
         print("\n" + "=" * 60)
         print("Setup completed successfully!")
         print("=" * 60)
@@ -53,56 +56,61 @@ def setup_database():
 
 def create_sample_users():
     """Create sample users for testing"""
-    sample_users = [
-        {
-            "university_id": "21i-1234",
-            "password": "password123",
-            "area": AreaEnum.SEECS
-        },
-        {
-            "university_id": "21i-5678",
-            "password": "password123",
-            "area": AreaEnum.NBS
-        },
-        {
-            "university_id": "22i-0001",
-            "password": "password123",
-            "area": AreaEnum.ASAB
-        }
+    sample_areas = [
+        AreaEnum.SEECS,
+        AreaEnum.NBS,
+        AreaEnum.ASAB,
     ]
     
-    for user_data in sample_users:
-        password_hash = bcrypt.hashpw(
-            user_data["password"].encode('utf-8'),
-            bcrypt.gensalt()
-        ).decode('utf-8')
-        
+    created_keys = []
+    
+    for area in sample_areas:
         secret_key = generate_secret_key()
         
-        # Create user account
+        # Create user record (registration only)
         user = User(
-            university_id=user_data["university_id"],
-            password_hash=password_hash,
             secret_key=secret_key
         )
         
-        # Create profile
+        # Create profile (data stored against secret key)
         profile = SecretKeyProfile(
             secret_key=secret_key,
-            area=user_data["area"],
-            points=100
+            area=area,
+            points=Config.INITIAL_USER_POINTS
         )
         
         db.session.add(user)
         db.session.add(profile)
-        print(f"  - Created user: {user_data['university_id']} ({user_data['area'].value})")
-        print(f"    Secret Key: {secret_key}")
+        created_keys.append((secret_key, area.value))
+        print(f"  - Created profile for area: {area.value}")
     
     db.session.commit()
-    print("\n✓ Sample users created!")
-    print("\nYou can login with:")
-    print("  Secret Key: (see above)")
-    print("  Or recover with: University ID: 21i-1234, Password: password123")
+    print("\n✓ Sample profiles created!")
+    print("\nTest secret keys (save these for login):")
+    for key, area in created_keys:
+        print(f"  Area {area}: {key}")
+
+
+def create_admin():
+    """Create default admin account"""
+    admin_key = generate_secret_key()
+    
+    admin = Admin(
+        admin_key=admin_key
+    )
+    
+    db.session.add(admin)
+    db.session.commit()
+    
+    print("\n✓ Admin account created!")
+    print("\n" + "=" * 70)
+    print("ADMIN PRIVATE KEY (SAVE THIS - IT WILL NOT BE SHOWN AGAIN!):")
+    print("=" * 70)
+    print(f"\n{admin_key}\n")
+    print("=" * 70)
+    print("\nUse this key to login to the admin dashboard.")
+    print("Keep it secure and do not share it with anyone!")
+    print("=" * 70)
 
 
 if __name__ == '__main__':

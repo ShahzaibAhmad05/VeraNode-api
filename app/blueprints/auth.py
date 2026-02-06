@@ -105,3 +105,16 @@ def get_profile():
     return jsonify({
         'profile': profile.to_dict()
     }), 200
+
+
+@auth_bp.route('/logout', methods=['POST'])
+@jwt_required()
+def logout():
+    """
+    Logout endpoint - JWT tokens are stateless, so logout is client-side.
+    This endpoint exists for frontend convenience and to confirm logout action.
+    """
+    return jsonify({
+        'success': True,
+        'message': 'Logged out successfully. Please discard your JWT token.'
+    }), 200

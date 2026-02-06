@@ -134,7 +134,7 @@ rumors (1) ← (1) blockchain_ledger [when finalized]
 - Profile data cannot be traced back to any personal information
 - Nullifiers ensure anonymous voting while preventing double-votes
 - **Key Loss**: System assumes users will never lose their key - no recovery mechanism exists
-- **Admin View**: When viewing blocked accounts, only secret_key is visible, not user details
+- **Admin View**: Admins can ONLY see blocked users' full secret keys (for unblocking), NO area or points visible
 - **Vote Privacy**: Votes are DELETED after rumor finalization - cannot trace voting history
 - **Blockchain**: Only aggregate statistics stored permanently, individual votes are erased
 

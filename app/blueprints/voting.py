@@ -98,7 +98,7 @@ def vote_on_rumor(rumor_id):
 @nullifier_required
 def get_vote_status(rumor_id):
     """Check if user has voted on a rumor"""
-    user = g.current_user
+    secret_key = g.secret_key
     
     # Get rumor
     rumor = Rumor.query.get(rumor_id)
@@ -106,7 +106,7 @@ def get_vote_status(rumor_id):
         raise APIError("Rumor not found", "RUMOR_NOT_FOUND", 404)
     
     # Generate nullifier
-    nullifier = generate_vote_nullifier(user, rumor_id)
+    nullifier = generate_vote_nullifier(secret_key, rumor_id)
     
     # Check for existing vote
     vote = Vote.query.filter_by(

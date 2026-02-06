@@ -35,14 +35,6 @@ def init_db():
         else:
             print(f"\n✓ Database already contains {user_count} user(s)")
         
-        # Check if admin exists, if not create one
-        admin_count = Admin.query.count()
-        if admin_count == 0:
-            print("\nNo admin found. Creating admin account...")
-            create_admin()
-        else:
-            print(f"\n✓ Admin account already exists")
-        
         print("\n✓ Database initialization complete!")
 
 
@@ -81,28 +73,6 @@ def create_sample_data():
     print("\nTest secret keys:")
     for key, area in created_keys:
         print(f"  Area {area}: {key}")
-
-
-def create_admin():
-    """Create default admin account"""
-    admin_key = generate_secret_key()
-    
-    admin = Admin(
-        admin_key=admin_key
-    )
-    
-    db.session.add(admin)
-    db.session.commit()
-    
-    print("\n✓ Admin account created!")
-    print("\n" + "="*70)
-    print("ADMIN PRIVATE KEY (SAVE THIS - IT WILL NOT BE SHOWN AGAIN!):")
-    print("="*70)
-    print(f"\n{admin_key}\n")
-    print("="*70)
-    print("\nUse this key to login to the admin dashboard.")
-    print("Keep it secure and do not share it with anyone!")
-    print("="*70)
 
 
 if __name__ == '__main__':
