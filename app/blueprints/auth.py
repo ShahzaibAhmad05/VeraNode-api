@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from app import db
@@ -9,6 +9,43 @@ from app.utils.error_handlers import APIError
 from app.config import Config
 
 auth_bp = Blueprint('auth', __name__)
+
+
+@auth_bp.route('/check-key-status', methods=['POST'])
+def check_key_status():
+    """Check if a secret key exists and whether it has expired"""
+    data = request.get_json()
+    
+    if not data:
+        raise APIError("Request body is required", "INVALID_REQUEST", 400)
+    
+    secret_key = data.get('secretKey', '').strip()
+    
+    if not secret_key:
+        raise APIError("Secret key is required", "MISSING_SECRET_KEY", 400)
+    
+    # Find the profile by secret key
+    profile = SecretKeyProfile.query.filter_by(secret_key=secret_key).first()
+    
+    if not profile:
+        return jsonify({
+            'exists': False,
+            'message': 'Secret key not found'
+        }), 404
+    
+    # Check and update expiration status
+    is_expired = profile.check_key_expiration()
+    
+    if is_expired:
+        db.session.commit()
+    
+    return jsonify({
+        'exists': True,
+        'isExpired': profile.is_key_expired,
+        'expiresAt': profile.key_expires_at.isoformat(),
+        'canRecover': profile.is_key_expired,
+        'message': 'Key has expired and can be recovered during registration' if profile.is_key_expired else 'Key is still valid'
+    }), 200
 
 
 @auth_bp.route('/register', methods=['POST'])
@@ -22,6 +59,7 @@ def register():
     email = data.get('email', '').strip().lower()
     password = data.get('password', '')
     department = data.get('department', '')
+    previous_secret_key = data.get('previousSecretKey', '').strip() if data.get('previousSecretKey') else None
     
     # Validate email
     valid, error = validate_edu_email(email)
@@ -50,6 +88,61 @@ def register():
     if existing_user:
         raise APIError("Email already registered", "EMAIL_EXISTS", 409)
     
+    # Handle key recovery if previous key is provided
+    if previous_secret_key:
+        # Find the old profile by previous secret key
+        old_profile = SecretKeyProfile.query.filter_by(secret_key=previous_secret_key).first()
+        
+        if not old_profile:
+            raise APIError(
+                "Previous secret key not found. Please register without a previous key.",
+                "INVALID_PREVIOUS_KEY",
+                404
+            )
+        
+        # Check if the key has expired
+        old_profile.check_key_expiration()
+        
+        if not old_profile.is_key_expired:
+            raise APIError(
+                "Previous secret key has not expired yet. You can still use it to login.",
+                "KEY_NOT_EXPIRED",
+                400
+            )
+        
+        # Generate new secret key
+        new_secret_key = generate_secret_key()
+        
+        # Ensure secret key uniqueness
+        while SecretKeyProfile.query.filter_by(secret_key=new_secret_key).first() is not None:
+            new_secret_key = generate_secret_key()
+        
+        # Store previous key and update to new key
+        old_profile.previous_key = old_profile.secret_key
+        old_profile.secret_key = new_secret_key
+        old_profile.key_created_at = datetime.utcnow()
+        old_profile.key_expires_at = datetime.utcnow() + timedelta(days=30)
+        old_profile.is_key_expired = False
+        
+        # Create user account with email and password
+        password_hashed = hash_password(password)
+        user = User(
+            email=email,
+            password_hash=password_hashed
+        )
+        
+        db.session.add(user)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Secret key recovered and renewed successfully! Your account data has been preserved. SAVE YOUR NEW SECRET KEY!',
+            'secretKey': new_secret_key,
+            'profile': old_profile.to_dict(),
+            'recovered': True
+        }), 200
+    
+    # Standard registration (no key recovery)
     # Create user account with email and password
     password_hashed = hash_password(password)
     user = User(
@@ -79,7 +172,8 @@ def register():
         'success': True,
         'message': 'Registration successful. SAVE YOUR SECRET KEY - it cannot be recovered or regenerated!',
         'secretKey': secret_key,
-        'profile': profile.to_dict()
+        'profile': profile.to_dict(),
+        'recovered': False
     }), 201
 
 
@@ -118,6 +212,16 @@ def login():
     
     if not profile:
         raise APIError("Invalid secret key", "INVALID_CREDENTIALS", 401)
+    
+    # Check if the key has expired
+    is_expired = profile.check_key_expiration()
+    if is_expired:
+        db.session.commit()
+        raise APIError(
+            "Your secret key has expired (30 days). Please register again and use this expired key to recover your account data.",
+            "KEY_EXPIRED",
+            403
+        )
     
     if profile.is_blocked:
         raise APIError(

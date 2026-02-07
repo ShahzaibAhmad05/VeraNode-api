@@ -74,17 +74,39 @@ class SecretKeyProfile(db.Model):
     points = db.Column(db.Integer, default=100, nullable=False)
     is_blocked = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    key_created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    key_expires_at = db.Column(db.DateTime, nullable=False)
+    is_key_expired = db.Column(db.Boolean, default=False, nullable=False)
+    previous_key = db.Column(db.String(64), nullable=True)
     
     # Relationships
     rumors = db.relationship('Rumor', back_populates='profile', lazy='dynamic', cascade='all, delete-orphan')
     votes = db.relationship('Vote', back_populates='profile', lazy='dynamic', cascade='all, delete-orphan')
+    
+    def __init__(self, **kwargs):
+        super(SecretKeyProfile, self).__init__(**kwargs)
+        # Set key expiration to 30 days from creation if not set
+        if not self.key_expires_at:
+            key_time = self.key_created_at if self.key_created_at else datetime.utcnow()
+            self.key_expires_at = key_time + timedelta(days=30)
+            if not self.key_created_at:
+                self.key_created_at = key_time
+    
+    def check_key_expiration(self):
+        """Check if the key has expired and update status"""
+        if datetime.utcnow() >= self.key_expires_at:
+            self.is_key_expired = True
+            return True
+        return False
     
     def to_dict(self):
         return {
             'area': self.area.value,
             'points': self.points,
             'isBlocked': self.is_blocked,
-            'createdAt': self.created_at.isoformat()
+            'createdAt': self.created_at.isoformat(),
+            'keyExpiresAt': self.key_expires_at.isoformat(),
+            'isKeyExpired': self.is_key_expired
         }
     
     def __repr__(self):
