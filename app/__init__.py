@@ -35,7 +35,7 @@ def create_app(config_name=None):
     
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(rumors_bp, url_prefix='/api/rumors')
-    app.register_blueprint(voting_bp, url_prefix='/api')
+    app.register_blueprint(voting_bp, url_prefix='/api/voting')
     app.register_blueprint(users_bp, url_prefix='/api/user')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
     
