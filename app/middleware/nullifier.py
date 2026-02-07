@@ -10,17 +10,36 @@ def nullifier_required(f):
     """
     Middleware decorator to validate nullifier for voting operations
     Ensures deterministic nullifier generation for privacy
+    Accepts either X-Secret-Key header or JWT token
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Verify JWT first
-        verify_jwt_in_request()
-        secret_key = get_jwt_identity()
+        # Try to get secret key from X-Secret-Key header first
+        secret_key = request.headers.get('X-Secret-Key')
+        
+        # If not present, try JWT authentication
+        if not secret_key:
+            try:
+                verify_jwt_in_request()
+                secret_key = get_jwt_identity()
+            except:
+                raise APIError(
+                    "Authentication required. Provide X-Secret-Key header or valid JWT token",
+                    "UNAUTHORIZED",
+                    401
+                )
+        
+        if not secret_key:
+            raise APIError(
+                "Secret key is required",
+                "UNAUTHORIZED",
+                401
+            )
         
         # Get profile with secret key
         profile = SecretKeyProfile.query.filter_by(secret_key=secret_key).first()
         if not profile:
-            raise APIError("Profile not found", "PROFILE_NOT_FOUND", 404)
+            raise APIError("Invalid secret key", "INVALID_SECRET_KEY", 401)
         
         if profile.is_blocked:
             raise APIError(

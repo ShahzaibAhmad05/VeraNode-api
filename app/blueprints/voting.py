@@ -75,29 +75,40 @@ def cast_vote():
     # Calculate vote weight (within area = 1.0, not within area = 0.3)
     vote_weight = calculate_vote_weight(profile.area, rumor.area_of_vote)
     
-    # Create vote
-    vote = Vote(
-        rumor_id=rumor_id,
-        profile_id=profile.id,
-        vote_type=VoteTypeEnum[vote_type],
-        weight=vote_weight,
-        is_within_area=(profile.area == rumor.area_of_vote),
-        nullifier=nullifier
-    )
-    
-    db.session.add(vote)
-    db.session.commit()
-    
-    return jsonify({
-        'message': 'Vote recorded successfully',
-        'vote': {
-            'rumorId': rumor_id,
-            'voteType': vote_type,
-            'weight': vote_weight,
-            'isWithinArea': vote.is_within_area,
-            'timestamp': vote.timestamp.isoformat()
-        }
-    }), 201
+    try:
+        # Create vote
+        vote = Vote(
+            rumor_id=rumor_id,
+            profile_id=profile.id,
+            vote_type=VoteTypeEnum[vote_type],
+            weight=vote_weight,
+            is_within_area=(profile.area == rumor.area_of_vote),
+            nullifier=nullifier
+        )
+        
+        db.session.add(vote)
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Vote recorded successfully',
+            'vote': {
+                'rumorId': rumor_id,
+                'voteType': vote_type,
+                'weight': vote_weight,
+                'isWithinArea': vote.is_within_area,
+                'timestamp': vote.timestamp.isoformat()
+            }
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error creating vote: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise APIError(
+            f"Failed to record vote: {str(e)}",
+            "VOTE_CREATION_FAILED",
+            500
+        )
 
 
 @voting_bp.route('/rumors/<rumor_id>/vote', methods=['POST'])
@@ -160,7 +171,7 @@ def vote_on_rumor(rumor_id):
     
     # Calculate vote weight
     is_within_area = (profile.area == rumor.area_of_vote)
-    weight = calculate_vote_weight(profile.points, is_within_area)
+    weight = calculate_vote_weight(profile.area, rumor.area_of_vote)
     
     # Create vote
     vote = Vote(

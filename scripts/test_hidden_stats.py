@@ -31,7 +31,7 @@ def test_hidden_stats():
             if profile:
                 from app.utils.helpers import generate_nullifier, calculate_vote_weight
                 nullifier = generate_nullifier(profile.secret_key, active_rumor.id)
-                weight = calculate_vote_weight(profile.points, profile.area == active_rumor.area_of_vote)
+                weight = calculate_vote_weight(profile.area, active_rumor.area_of_vote)
                 
                 vote = Vote(
                     rumor_id=active_rumor.id,

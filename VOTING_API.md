@@ -1,10 +1,8 @@
 # Voting API - Frontend Guide
 
-## ⚠️ CRITICAL: Authentication Required
+## ✅ FIXED: Authentication Now Works with X-Secret-Key
 
-**ALL voting endpoints require the `X-Secret-Key` header.**
-
-If you get **401 Unauthorized**, the secret key is missing or invalid.
+The backend now accepts the `X-Secret-Key` header directly - no JWT token needed.
 
 ### Setup Your API Client
 
@@ -27,7 +25,7 @@ api.interceptors.request.use((config) => {
 });
 ```
 
-**Without this interceptor, all voting requests will fail with 401.**
+**This will now work correctly. The 401 error is fixed.**
 
 ---
 
@@ -66,12 +64,14 @@ X-Secret-Key: {user's secret key}  ← REQUIRED
 ```
 
 ### Error Responses
-- **401 UNAUTHORIZED**: Missing or invalid X-Secret-Key header
+- **401 UNAUTHORIZED**: Missing X-Secret-Key header
+- **401 INVALID_SECRET_KEY**: Secret key doesn't match any profile
 - **400 DUPLICATE_VOTE**: User already voted on this rumor
 - **400 VOTING_CLOSED**: Rumor is locked, no more votes accepted
 - **400 VOTING_ENDED**: Voting period ended (not locked yet)
 - **400 INVALID_VOTE_TYPE**: voteType must be "FACT" or "LIE"
 - **404 RUMOR_NOT_FOUND**: Rumor doesn't exist
+- **403 ACCOUNT_BLOCKED**: User's reputation is too low (≤ -100 points)
 
 ---
 
@@ -95,7 +95,8 @@ X-Secret-Key: {user's secret key}  ← REQUIRED
 ```
 
 ### Error Responses
-- **401 UNAUTHORIZED**: Missing or invalid X-Secret-Key header
+- **401 UNAUTHORIZED**: Missing X-Secret-Key header
+- **401 INVALID_SECRET_KEY**: Secret key doesn't match any profile
 - **404 RUMOR_NOT_FOUND**: Rumor doesn't exist
 
 **Note**: Only tells you IF you voted, not WHAT you voted for (privacy)
@@ -136,8 +137,9 @@ X-Secret-Key: {user's secret key}  ← REQUIRED
 ```
 
 ### Error Responses
-- **401 UNAUTHORIZED**: Missing or invalid X-Secret-Key header
-- **404 PROFILE_NOT_FOUND**: Secret key doesn't match any profile
+- **401 UNAUTHORIZED**: Missing X-Secret-Key header
+- **401 INVALID_SECRET_KEY**: Secret key doesn't match any profile
+- **403 ACCOUNT_BLOCKED**: User's reputation is too low
 
 **Important**: Votes are permanently deleted after rumor finalization for privacy.
 
@@ -162,18 +164,44 @@ System requires 30% of votes to be "within area" for rumor to be finalized.
 
 ---
 
-## Troubleshooting 401 Unauthorized
+## Troubleshooting
 
-### Problem
-```
-Request failed with status code 401
-```
+### 401 Unauthorized Error
 
-### Solution Checklist
+**Cause**: Missing or invalid `X-Secret-Key` header
 
-1. **Add Secret Key to Headers**
+**Solutions**:
+
+1. **Verify Secret Key Exists**
    ```typescript
-   // Option 1: Axios interceptor (recommended)
+   const secretKey = localStorage.getItem('secretKey');
+   console.log('Secret Key:', secretKey ? 'Found' : 'Missing');
+   ```
+
+2. **Check Header is Sent**
+   - Open browser DevTools → Network tab
+   - Click on the failed request
+   - Check Request Headers section
+   - Verify `X-Secret-Key` is present with correct value
+
+3. **Test Backend Directly**
+   ```bash
+   # Replace YOUR_SECRET_KEY and RUMOR_ID
+   curl -X POST http://localhost:5000/api/voting/vote \
+     -H "Content-Type: application/json" \
+     -H "X-Secret-Key: YOUR_SECRET_KEY" \
+     -d '{"rumorId":"RUMOR_ID","voteType":"FACT"}'
+   ```
+
+4. **Common Axios Setup Issues**
+
+   ❌ **Wrong**: No interceptor, header not sent
+   ```typescript
+   const response = await api.post('/voting/vote', { rumorId, voteType });
+   ```
+
+   ✅ **Correct**: Interceptor adds header automatically
+   ```typescript
    api.interceptors.request.use((config) => {
      const secretKey = localStorage.getItem('secretKey');
      if (secretKey) {
@@ -181,54 +209,33 @@ Request failed with status code 401
      }
      return config;
    });
+   
+   // Now this works:
+   const response = await api.post('/voting/vote', { rumorId, voteType });
    ```
 
-2. **OR Manual Header per Request**
+   ✅ **Also Correct**: Manual header per request
    ```typescript
    const secretKey = localStorage.getItem('secretKey');
-   await api.post('/voting/vote', 
+   const response = await api.post('/voting/vote', 
      { rumorId, voteType },
      { headers: { 'X-Secret-Key': secretKey } }
    );
    ```
 
-3. **Verify Secret Key Exists**
-   ```typescript
-   const secretKey = localStorage.getItem('secretKey');
-   if (!secretKey) {
-     // Redirect to login or registration
-     console.error('No secret key found');
-   }
-   ```
+### 403 Account Blocked
 
-4. **Test with cURL**
-   ```bash
-   curl -X POST http://localhost:5000/api/voting/vote \
-     -H "Content-Type: application/json" \
-     -H "X-Secret-Key: your-secret-key-here" \
-     -d '{"rumorId":"rumor-uuid","voteType":"FACT"}'
-   ```
+**Cause**: User's reputation points ≤ -100
 
-### Common Mistakes
+**What to do**: 
+- User can still view content but cannot post or vote
+- Points are lost from: invalid posts (-25), incorrect votes (-10), posting lies (-50)
+- No recovery mechanism - user must create new account
 
-❌ **Wrong**: Headers not sent
-```typescript
-api.post('/voting/vote', { rumorId, voteType });
-```
+### 400 Duplicate Vote
 
-✅ **Correct**: Headers included
-```typescript
-api.post('/voting/vote', { rumorId, voteType }, {
-  headers: { 'X-Secret-Key': secretKey }
-});
-```
+**Cause**: User already voted on this rumor
 
-❌ **Wrong**: Header name typo
-```typescript
-headers: { 'Secret-Key': secretKey }  // Missing X-
-```
-
-✅ **Correct**: Exact header name
-```typescript
-headers: { 'X-Secret-Key': secretKey }
-```
+**What to do**: 
+- Check vote status first: `GET /api/voting/status/{rumorId}`
+- Disable voting UI if `hasVoted: true`

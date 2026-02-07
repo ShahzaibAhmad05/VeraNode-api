@@ -24,11 +24,11 @@ def generate_nullifier(secret_key: str, identifier: str) -> str:
     return hashlib.sha256(combined.encode()).hexdigest()
 
 
-def calculate_vote_weight(user_points: int, is_within_area: bool) -> float:
-    """Calculate vote weight based on user points and area proximity"""
-    proximity_multiplier = 1.5 if is_within_area else 0.5
-    base_weight = 1.0
-    return user_points * proximity_multiplier + base_weight
+def calculate_vote_weight(user_area, rumor_area) -> float:
+    """Calculate vote weight based on area proximity"""
+    # Within area: weight = 1.0, Outside area: weight = 0.3
+    is_within_area = (user_area == rumor_area)
+    return 1.0 if is_within_area else 0.3
 
 
 def hash_data(data: str) -> str:

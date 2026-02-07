@@ -45,7 +45,9 @@ def run_tests():
     nullifier = generate_nullifier(secret_key, "test-id")
     assert len(nullifier) == 64, "Nullifier should be 64 characters"
     
-    weight = calculate_vote_weight(100, True)
+    # Assuming same area for testing - weight should be 1.0
+    from app.models import AreaEnum
+    weight = calculate_vote_weight(AreaEnum.POLITICS, AreaEnum.POLITICS)
     assert weight == 151.0, f"Vote weight calculation incorrect: {weight}"
     
     hash_val = hash_data("test")
