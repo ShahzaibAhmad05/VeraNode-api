@@ -69,6 +69,16 @@ def create_rumor():
     validation = ai_service.validate_rumor(content, voting_ends_at_str, area_of_vote)
     
     if not validation['isValid']:
+        # Deduct points for posting invalid rumor
+        from app.config import Config
+        profile.points += Config.INVALID_RUMOR_PENALTY
+        
+        # Check if user should be blocked
+        if profile.points <= Config.BLOCKING_THRESHOLD:
+            profile.is_blocked = True
+        
+        db.session.commit()
+        
         raise APIError(
             f"Rumor validation failed: {validation['reason']}",
             "INVALID_RUMOR",

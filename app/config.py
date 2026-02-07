@@ -43,8 +43,9 @@ class Config:
     # Points Configuration
     INITIAL_USER_POINTS = 100
     CORRECT_VOTE_POINTS = 10
-    INCORRECT_VOTE_PENALTY = -5
+    INCORRECT_VOTE_PENALTY = -10
     LIE_RUMOR_PENALTY = -50
+    INVALID_RUMOR_PENALTY = -25  # Penalty for posting invalid rumor (AI rejected)
     BLOCKING_THRESHOLD = -100
 
 

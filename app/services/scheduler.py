@@ -6,19 +6,19 @@ from app.services.blockchain import blockchain_service
 from app.config import Config
 
 
-def lock_expired_voting():
-    """Background job to lock voting when time expires and threshold is met"""
-    print(f"[{datetime.utcnow()}] Running lock_expired_voting job...")
+def lock_completed_voting():
+    """Background job to lock voting when voting period ends and threshold is met"""
+    print(f"[{datetime.utcnow()}] Running lock_completed_voting job...")
     
     try:
-        # Find rumors that should be locked
-        expired_rumors = Rumor.query.filter(
+        # Find rumors where voting period has ended
+        completed_rumors = Rumor.query.filter(
             Rumor.is_locked == False,
             Rumor.voting_ends_at < datetime.utcnow()
         ).all()
         
         locked_count = 0
-        for rumor in expired_rumors:
+        for rumor in completed_rumors:
             stats = rumor.get_stats()
             total_votes = stats['totalVotes']
             under_area_votes = stats['underAreaVotes']
@@ -39,7 +39,7 @@ def lock_expired_voting():
             
     except Exception as e:
         db.session.rollback()
-        print(f"  ✗ Error in lock_expired_voting: {str(e)}")
+        print(f"  ✗ Error in lock_completed_voting: {str(e)}")
 
 
 def finalize_decisions():
@@ -145,7 +145,7 @@ def setup_jobs(app):
     # Add application context to jobs
     def lock_voting_job():
         with app.app_context():
-            lock_expired_voting()
+            lock_completed_voting()
     
     def finalize_job():
         with app.app_context():
@@ -157,7 +157,7 @@ def setup_jobs(app):
         trigger='interval',
         minutes=Config.VOTING_CHECK_INTERVAL_MINUTES,
         id='lock_voting',
-        name='Lock expired voting',
+        name='Lock completed voting',
         replace_existing=True
     )
     
